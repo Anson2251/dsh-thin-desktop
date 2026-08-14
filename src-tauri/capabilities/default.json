@@ -1,8 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capabilities for the main window: allow IPC to app commands and listening on backend events.",
+  "description": "Default capabilities for the main window: Tauri IPC for app commands, backend events, native notifications, and the remote dsh web origin we navigate to.",
   "windows": ["main"],
+  "remote": {
+    "urls": ["http://127.0.0.1:3080"]
+  },
   "permissions": [
     "core:default",
     "core:event:default",

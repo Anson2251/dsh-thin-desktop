@@ -45,9 +45,6 @@ pub fn handle_frame(app: &tauri::AppHandle, raw: &str) {
                     frame.session_id.as_deref(),
                 ),
             );
-            // Bring the window forward so the in-app prompt is as visible as
-            // the native banner.
-            crate::tray::focus(app);
         }
         "question/requested" => {
             // Surface the first question (there is usually exactly one).
@@ -61,7 +58,6 @@ pub fn handle_frame(app: &tauri::AppHandle, raw: &str) {
                 body.push_str(&format!("\n({})", short(sid)));
             }
             notify(app, crate::t!("notify.question.title"), &body);
-            crate::tray::focus(app);
         }
         "approval/resolved" => {
             // Closing the loop is informative but not worth a banner by default.
