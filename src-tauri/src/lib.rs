@@ -558,9 +558,14 @@ pub fn run() {
             // is hidden in the tray (we intercept CloseRequested), bring it
             // back — otherwise Tauri shows it and we'd race it with a
             // hide()/show() that makes it flash.
+            #[cfg(target_os = "macos")]
             if let tauri::RunEvent::Reopen { .. } = event {
                 tray::focus(app);
             }
+            // Keep params used on non-macOS (Reopen is mac-only) to avoid an
+            // unused-variables warning.
+            #[cfg(not(target_os = "macos"))]
+            let _ = (&app, &event);
         });
 }
 
