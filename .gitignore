@@ -1,0 +1,16 @@
+# Rust / Tauri
+/target/
+/src-tauri/target/
+/src-tauri/gen/schemas/
+
+# Node (if a frontend build is added later)
+node_modules/
+dist/
+
+# macOS
+.DS_Store
+
+# Editor
+.idea/
+.vscode/
+*.swp

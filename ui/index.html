@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DeepSeek Harness</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --fg: #c9d1d9;
+      --dim: #8b949e;
+      --accent: #3fb950;
+      --warn: #d29922;
+      --err: #f85149;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    .card {
+      text-align: center;
+      max-width: 420px;
+      width: 90%;
+      user-select: none;
+    }
+    .logo-wrap {
+      width: 72px;
+      height: 72px;
+      margin: 0 auto 18px;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #1f6feb, #6e40c9);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 26px;
+      color: #fff;
+      box-shadow: 0 8px 30px rgba(110, 64, 201, 0.35);
+    }
+    h1 { font-size: 18px; margin: 0 0 6px; font-weight: 600; }
+    .sub { color: var(--dim); font-size: 13px; margin-bottom: 22px; }
+    .status {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--warn);
+      animation: pulse 1.2s infinite;
+    }
+    .dot.ok { background: var(--accent); animation: none; }
+    .dot.err { background: var(--err); animation: none; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+    .detail {
+      color: var(--dim);
+      font-size: 12px;
+      line-height: 1.5;
+      min-height: 18px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+    .log {
+      margin-top: 18px;
+      text-align: left;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 10px 12px;
+      max-height: 160px;
+      overflow-y: auto;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 11px;
+      color: var(--dim);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    button {
+      margin-top: 16px;
+      padding: 8px 18px;
+      border-radius: 6px;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: #21262d;
+      color: var(--fg);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    button:hover { background: #30363d; }
+    .hidden { display: none; }
+    .url-text { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-wrap">DSH</div>
+    <h1>DeepSeek Harness</h1>
+    <div class="sub">thin desktop client</div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <span id="state-text">Connecting…</span>
+    </div>
+    <div class="detail" id="detail">looking for <span class="url-text">http://127.0.0.1:3080</span></div>
+    <div class="log hidden" id="log"></div>
+    <button id="retry" class="hidden">Start / Restart backend</button>
+  </div>
+
+  <script>
+    const dot = document.getElementById("dot");
+    const stateText = document.getElementById("state-text");
+    const detailEl = document.getElementById("detail");
+    const logEl = document.getElementById("log");
+    const retryEl = document.getElementById("retry");
+
+    // Shared language for the boot page. Defaults to system browser language;
+    // overridden by the Rust `get_lang` command (which reads DSH_LANG / LANG).
+    const dict = {
+      zh: {
+        "sub.title": "thin 桌面客户端",
+        "state.connecting": "正在连接…",
+        "detail.looking": "正在查找 ",
+        "state.ready": "就绪",
+        "state.starting": "正在启动后端…",
+        "state.unavailable": "后端不可用",
+        "state.lost": "连接丢失",
+        "detail.loading": "正在加载 ",
+        "detail.waiting": "等待 Web 界面…",
+        "detail.no_dsh": "是否已安装 <code>dsh</code> 并加入 PATH？",
+        "detail.running_dsh": "运行 <code>dsh web</code>",
+        "btn.retry": "启动 / 重启后端",
+        "err.failed": "启动失败",
+        "log.notice": "正在运行 <code>dsh web</code>",
+      },
+      en: {
+        "sub.title": "thin desktop client",
+        "state.connecting": "Connecting…",
+        "detail.looking": "looking for ",
+        "state.ready": "Ready",
+        "state.starting": "Starting backend…",
+        "state.unavailable": "Backend unavailable",
+        "state.lost": "Connection lost",
+        "detail.loading": "loading ",
+        "detail.waiting": "waiting for web UI…",
+        "detail.no_dsh": "is <code>dsh</code> installed and on PATH?",
+        "detail.running_dsh": "running <code>dsh web</code>",
+        "btn.retry": "Start / Restart backend",
+        "err.failed": "Failed to start",
+        "log.notice": "running <code>dsh web</code>",
+      },
+    };
+
+    let L = "en"; // set below from Rust (get_lang) or navigator.language
+    const t = (key) => (dict[L] && dict[L][key]) || dict.en[key] || key;
+
+    async function init() {
+      const api = window.__TAURI__;
+      const invoke = api ? api.core.invoke : null;
+
+      // 1) Resolve language: Rust env detection first, else browser locale.
+      if (invoke) {
+        try { L = (await invoke("get_lang")) || "en"; } catch (_) {}
+        if (L !== "zh" && L !== "en") L = "en";
+      } else {
+        L = (navigator.language || "en").toLowerCase().startsWith("zh") ? "zh" : "en";
+      }
+
+      // 2) Apply localized labels to the static HTML.
+      document.querySelector(".sub").textContent = t("sub.title");
+      stateText.textContent = t("state.connecting");
+      detailEl.innerHTML = t("detail.looking") + '<span class="url-text">http://127.0.0.1:3080</span>';
+      retryEl.textContent = t("btn.retry");
+
+      // 3) Bind events if available.
+      if (API_LISTEN(api)) {
+        api.event.listen("dsh_log", (e) => appendLog(String(e.payload || "")));
+        api.event.listen("dsh_status", (e) => {
+          const s = e.payload || {};
+          if (s.url) {
+            setState("ok", t("state.ready"), t("detail.loading") + s.url);
+          } else if (s.running || s.reconnecting) {
+            setState("loading", t("state.starting"), s.detail);
+          } else {
+            setState("err", t("state.unavailable"), s.detail || t("state.lost"));
+          }
+        });
+      }
+      retryEl.addEventListener("click", () => {
+        setState("loading", t("state.starting"), t("log.notice"));
+        if (invoke) invoke("start_dsh").catch((e) => setState("err", t("err.failed"), String(e)));
+      });
+
+      // 4) If Rust reports an already-known URL, it will navigate automatically.
+      if (invoke) {
+        try {
+          const s = await invoke("get_status");
+          if (s && s.url) setState("ok", t("state.ready"), t("detail.loading") + s.url);
+          else if (s && (s.running || s.reconnecting)) setState("loading", t("state.starting"), t("detail.waiting"));
+          else setState("err", t("state.unavailable"), t("detail.no_dsh"));
+        } catch (e) {
+          setState("err", t("state.unavailable"), String(e));
+        }
+      }
+    }
+
+    function API_LISTEN(api) { return api && api.event; }
+
+    function setState(kind, text, detail) {
+      if (kind === "ok") dot.className = "dot ok";
+      else if (kind === "err") dot.className = "dot err";
+      else dot.className = "dot";
+      stateText.textContent = text;
+      if (detail != null) detailEl.innerHTML = detail;
+      retryEl.classList.toggle("hidden", kind !== "err");
+    }
+    function appendLog(line) {
+      logEl.classList.remove("hidden");
+      logEl.textContent += line + "\n";
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    init();
+  </script>
+</body>
+</html>

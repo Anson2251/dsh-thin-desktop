@@ -1,0 +1,41 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "DSH Thin Desktop",
+  "version": "0.1.0",
+  "identifier": "com.dsh.thinkdesktop",
+  "build": {
+    "beforeBuildCommand": "",
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "DeepSeek Harness",
+        "url": "index.html",
+        "width": 1280,
+        "height": 860,
+        "minWidth": 720,
+        "minHeight": 520,
+        "resizable": true,
+        "center": true
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon-32x32.png",
+      "icons/icon-128x128.png",
+      "icons/icon-256x256.png",
+      "icons/icon-512x512.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

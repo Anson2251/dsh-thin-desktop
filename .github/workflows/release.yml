@@ -1,0 +1,90 @@
+name: Release Build
+
+# 当创建/更新一个 GitHub Release 时，自动为各平台编译并上传构建产物。
+on:
+  release:
+    # "created" fires only when the release is fully created, so artifacts
+    # attach to an already-published release.
+    types: [created]
+
+# Grant the token the right to write Release assets (tauri-action uploads the
+# built bundles here). `contents: read` is needed by actions/checkout.
+permissions:
+  contents: write
+
+jobs:
+  # One build job per target platform. `cargo`/`tauri` compile natively per
+  # runner, so each job produces the right binary without cross-compilation.
+  publish:
+    name: build (${{ matrix.platform.name }})
+    runs-on: ${{ matrix.platform.os }}
+    strategy:
+      # Never cancel a whole batch because one OS failed; upload what succeeded.
+      fail-fast: false
+      matrix:
+        platform:
+          # Windows x86-64
+          - { name: windows-x86_64, os: windows-latest, target: x86_64-pc-windows-msvc }
+          # macOS / Apple Silicon (arm64)
+          - { name: macos-arm64,      os: macos-14,      target: aarch64-apple-darwin }
+          # Linux x86-64
+          - { name: linux-x86_64,     os: ubuntu-22.04,  target: x86_64-unknown-linux-gnu }
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Don't persist the token into the git config; tauri-action gets the
+          # token explicitly via the GITHUB_TOKEN env var instead.
+          persist-credentials: false
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            build-essential \
+            curl \
+            wget \
+            file \
+            libxdo-dev
+
+      - name: Set up Rust (${{ matrix.platform.target }})
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Build and attach to the release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Pass through the release tag (auto-detected by tauri-action).
+          # Uncomment to sign/notarize on macOS when you have the secrets set:
+          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          # APPLE_ID: ${{ secrets.APPLE_ID }}
+          # APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          tagName: ${{ github.event.release.tag_name }}
+          releaseName: ${{ github.event.release.tag_name }}
+          releaseBody: ${{ github.event.release.body }}
+          releaseDraft: false
+          prerelease: ${{ github.event.release.prerelease }}
+          args: --target ${{ matrix.platform.target }}
