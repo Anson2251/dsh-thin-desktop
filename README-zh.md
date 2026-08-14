@@ -6,6 +6,9 @@
 
 如果你平时在浏览器标签页里用 DeepSeek Harness 的网页界面，这个应用能给你更地道的桌面体验：独立窗口、菜单栏、系统托盘图标，以及 dsh 需要你注意时的原生通知。
 
+> [!NOTE]
+> **我们需要一个图标！** 当前应用用的是占位 Logo。如果你愿意为 DSH Thin Desktop 设计一款正式的应用/托盘图标，非常欢迎提交 Pull Request。
+
 ---
 
 ## 这是什么？
@@ -47,6 +50,17 @@ dsh web   # 启动服务并打印类似 "dsh web: http://127.0.0.1:3080"
 ---
 
 ## 安装 / 运行
+
+### 从 Releases 下载
+
+各平台的预编译安装包已发布在 GitHub
+[Releases](https://github.com/Anson2251/dsh-thin-desktop/releases)。请按平台选择：
+
+- **macOS（Apple Silicon）**——`dsh-thin-desktop_*_aarch64.dmg`（把 App 拖入 `Applications`）
+- **Windows x86-64**——`dsh-thin-desktop_*_x64-setup.exe`（安装程序）或 `.msi`
+- **Linux x86-64**——`.AppImage`（chmod +x 后运行，或安装）或 `.deb`
+
+> macOS：如果 Gatekeeper 拦截未签名的包，首次请右键「打开」；并在首次询问时允许通知。
 
 ### 已有编译好的应用？
 

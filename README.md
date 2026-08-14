@@ -8,6 +8,11 @@ If you use the DeepSeek Harness web UI in a browser tab, this app gives you a
 proper desktop experience instead: its own window, a menu bar, a system-tray
 icon, and native notifications when dsh needs your attention.
 
+> [!NOTE]
+> **We need an icon!** The app currently ships with a placeholder logo.
+> If you'd like to design a proper app icon / tray icon for DSH Thin Desktop,
+> contributions (pull requests) are very welcome.
+
 ---
 
 ## What is this?
@@ -55,6 +60,21 @@ dsh web   # starts a server and prints e.g. "dsh web: http://127.0.0.1:3080"
 ---
 
 ## Install / Run
+
+### Download from Releases
+
+Pre-built installers for each platform are published under GitHub
+[Releases](https://github.com/Anson2251/dsh-thin-desktop/releases). Pick the one
+for your machine:
+
+- **macOS (Apple Silicon)** — `dsh-thin-desktop_*_aarch64.dmg` (drag the app to
+  `Applications`)
+- **Windows x86-64** — `dsh-thin-desktop_*_x64-setup.exe` (installer) or the
+  `.msi`
+- **Linux x86-64** — the `.AppImage` (chmod +x and run, or install) or the `.deb`
+
+> macOS: right-click "Open" the first time if Gatekeeper blocks an unsigned
+> build, and allow notifications when prompted.
 
 ### Already have a built app?
 
