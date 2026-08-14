@@ -157,13 +157,41 @@ DSH_LANG=en_US.UTF-8 ./dsh-thin-desktop
 Internally this is a tiny `t!` macro (see `src/i18n.rs`) similar in spirit to
 `vue-i18n`: compile-time keys, runtime lookup by language, `{}` placeholders.
 
+### Where `dsh` lives (finding it)
+
+The app needs the `dsh` command to launch the backend. It finds it by looking
+up `PATH` **in this order** — stopping at the first step that succeeds:
+
+1. **`DSH_BIN_DIR`** — if you set it, this explicit override is used first.
+2. **Common npm/pnpm global-bin dirs** — `$HOME/.npm-global/bin`,
+   `$HOME/.npm/bin`, `$HOME/.local/bin`, `$HOME/bin`, `$PNPM_HOME`,
+   `~/Library/pnpm` (macOS), `~/bin`, and `/usr/local/bin`,
+   `/opt/homebrew/bin`.
+3. **Your shell's rc file** — the app asks your shell to `source` its config and
+   echo the resulting `$PATH`, recovering dirs that a GUI-launched app normally
+   never sees. Tried in this order and only if the file exists:
+   - `~/.zshrc` (zsh)
+   - `~/.config/fish/config.fish` (fish)
+   - `~/.bashrc` (bash)
+4. If none of the above finds `dsh`, the launch fails and the boot page shows a
+   "Start / Restart backend" error — double-check that `dsh` is installed.
+
+> `DSH_BIN_DIR` is the escape hatch for any unusual install location:
+>
+> ```bash
+> DSH_BIN_DIR=/path/to/dsh/bin ./dsh-thin-desktop
+> ```
+>
+> Tip: find where your CLI tools land with `which dsh` or `npm prefix -g`.
+
 ---
 
 ## Troubleshooting
 
 | Symptom | Likely cause & fix |
 |---|---|
-| Opens a "starting / reconnect" page and asks to retry | `dsh web` didn't start. Make sure `dsh` is on your `PATH`, then press **Start / Restart Backend**. |
+| Opens a "starting / reconnect" page and asks to retry | `dsh web` didn't start. Make sure `dsh` is reachable, then press **Start / Restart Backend**. |
+| App can't find `dsh` (PATH problem) | Launched from the dock/Start menu, GUI apps see only the system PATH, not your shell's. Set `DSH_BIN_DIR=/path/to/dsh/bin` when launching (or verify `which dsh`). |
 | No notification banner | macOS Focus/Do-Not-Disturb is on, or the app hasn't been allowed to notify yet — allow it once when prompted. |
 | Another app already uses port 3080 | The client follows whatever address `dsh web` reports and loads that instead. |
 

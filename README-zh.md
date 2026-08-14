@@ -131,13 +131,34 @@ DSH_LANG=en_US.UTF-8 ./dsh-thin-desktop
 
 内部实现是一个轻量的 `t!` 宏（见 `src/i18n.rs`），思路类似 `vue-i18n`：编译期 key、运行时按语言取词、支持 `{}` 占位符。
 
+### `dsh` 的位置（查找机制）
+
+应用需要 `dsh` 命令来启动后端，它按 **以下顺序** 查找、在第一个成功的步骤停下：
+
+1. **`DSH_BIN_DIR`** —— 若你设置了此环境变量，优先使用这个显式覆盖。
+2. **常见 npm/pnpm 全局 bin 目录** —— `$HOME/.npm-global/bin`、`$HOME/.npm/bin`、`$HOME/.local/bin`、`$HOME/bin`、`$PNPM_HOME`、`~/Library/pnpm`（macOS）、`~/bin`，以及 `/usr/local/bin`、`/opt/homebrew/bin`。
+3. **你的 shell 的 rc 文件** —— 应用会调用你的 shell `source` 其配置文件并回显得到的 `$PATH`，从而找回 GUI 启动的应用通常看不到的目录。按以下顺序、且仅当文件存在时尝试：
+   - `~/.zshrc`（zsh）
+   - `~/.config/fish/config.fish`（fish）
+   - `~/.bashrc`（bash）
+4. **都不行则报错** —— 启动失败，启动页会显示「重启后端」错误；请检查 `dsh` 是否已安装。
+
+> `DSH_BIN_DIR` 是应对任何非常规安装位置的兜底开关：
+>
+> ```bash
+> DSH_BIN_DIR=/path/to/dsh/bin ./dsh-thin-desktop
+> ```
+>
+> 提示：用 `which dsh` 或 `npm prefix -g` 可找到你的 CLI 工具装在哪。
+
 ---
 
 ## 常见问题
 
 | 现象 | 可能原因与解决 |
 |---|---|
-| 打开后停在「正在启动 / 重连」页并让你重试 | `dsh web` 没启动成功。确认 `dsh` 在你的 `PATH` 中，然后点 **Start / Restart Backend**。 |
+| 打开后停在「正在启动 / 重连」页并让你重试 | `dsh web` 没启动成功。确认 `dsh` 能被找到，然后点 **Start / Restart Backend**。 |
+| 应用找不到 `dsh`（PATH 问题） | 从 dock/开始菜单启动时，GUI 应用只看到系统 PATH，看不到 shell 里的配置。启动时设置 `DSH_BIN_DIR=/path/to/dsh/bin`（或先确认 `which dsh`）。 |
 | 没有通知横幅 | macOS 专注/勿扰模式开着，或应用还没被允许通知——在系统弹窗里点一次「允许」。 |
 | 端口 3080 被别的程序占用 | 客户端会跟随 `dsh web` 实际报告的地址去加载，不受影响。 |
 

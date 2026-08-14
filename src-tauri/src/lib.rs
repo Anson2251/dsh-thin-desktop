@@ -96,6 +96,168 @@ fn navigate_win(app: &AppHandle, url: &str) {
     }
 }
 
+/// Path separator for the current platform.
+fn path_sep() -> &'static str {
+    if cfg!(windows) {
+        ";"
+    } else {
+        ":"
+    }
+}
+
+/// Augment `PATH` with the common npm/pnpm global-bin locations.
+///
+/// When the app is launched from the macOS dock/Finder (or Windows Start menu),
+/// it inherits only the *system* PATH — the shell `.rc` files that add
+/// `~/.npm-global/bin` / pnpm's bin dir are not loaded. `dsh` is installed
+/// there, so `Command::new("dsh")` would fail. We prepend the candidate dirs
+/// so the spawned child can find `dsh` regardless of how the app was started.
+fn augmented_path() -> &'static str {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<String> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        let mut dirs: Vec<std::path::PathBuf> = Vec::new();
+
+        if let Some(b) = std::env::var_os("DSH_BIN_DIR") {
+            dirs.push(b.into());
+        }
+        if let Some(h) = &home {
+            dirs.push(h.join(".npm-global").join("bin"));
+            dirs.push(h.join(".npm").join("bin"));
+            dirs.push(h.join(".local").join("bin"));
+            dirs.push(h.join("bin"));
+        }
+        if let Some(p) = std::env::var_os("PNPM_HOME") {
+            dirs.push(p.into());
+        }
+        if let Some(h) = &home {
+            dirs.push(h.join("Library").join("pnpm"));
+            dirs.push(h.join(".local").join("share").join("pnpm"));
+        }
+        dirs.push("/usr/local/bin".into());
+        dirs.push("/opt/homebrew/bin".into());
+
+        // Start from the existing PATH, then prepend our candidate dirs.
+        let existing = std::env::var("PATH").unwrap_or_default();
+        let sep = path_sep();
+        let mut parts: Vec<String> = dirs
+            .iter()
+            .map(|d| d.to_string_lossy().into_owned())
+            .collect();
+        if !existing.is_empty() {
+            parts.push(existing);
+        }
+        parts.join(sep)
+    })
+}
+
+/// Resolve the user's shell `PATH` by asking their shell to source its rc file.
+///
+/// GUI-launched apps (macOS dock / Windows Start menu) inherit only the system
+/// PATH — dirs added in `~/.zshrc`, fish's `config.fish`, etc. are absent. This
+/// tells the user's own shell to `source` the rc file and echo the resulting
+/// `$PATH`, recovering those dirs. Tried in zsh → fish → bash order (zsh is the
+/// modern default on macOS; bash is the last-resort fallback). Best-effort:
+/// returns `None` on Windows or when no rc file / shell is available.
+fn shell_rc_path() -> Option<String> {
+    if cfg!(windows) {
+        return None;
+    }
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from)?;
+    let sep = path_sep();
+
+    // (shell, rc file, command snippet). Each snippet sources the rc file,
+    // then prints PATH. fish's $PATH is a list, not a ":" string, so it needs
+    // `string join :`; zsh/bash print the ":"-joined value directly.
+    let rcs: [(&str, std::path::PathBuf, &str); 3] = [
+        (
+            "zsh",
+            home.join(".zshrc"),
+            "source \"$HOME/.zshrc\" 2>/dev/null; printf '%s' \"$PATH\"",
+        ),
+        (
+            "fish",
+            home.join(".config/fish/config.fish"),
+            "source \"$HOME/.config/fish/config.fish\" 2>/dev/null; string join : \"$PATH\"",
+        ),
+        (
+            "bash",
+            home.join(".bashrc"),
+            "source \"$HOME/.bashrc\" 2>/dev/null; printf '%s' \"$PATH\"",
+        ),
+    ];
+
+    for (shell, rc_path, snippet) in rcs {
+        if !rc_path.is_file() {
+            continue;
+        }
+        if let Ok(out) = std::process::Command::new(shell).arg("-c").arg(snippet).output() {
+            if out.status.success() {
+                let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !s.is_empty() && s.split(sep).any(|d| !d.is_empty()) {
+                    return Some(s);
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Whether `exe` is found on any directory in `path` (a 2-joined PATH string).
+fn executable_on_path(exe: &str, path: &str) -> bool {
+    std::env::split_paths(path)
+        .filter(|d| !d.as_os_str().is_empty())
+        .any(|d| d.join(exe).is_file())
+}
+
+/// Combine a user-rc PATH with the augmented fallbacks: rc dirs first, then
+/// our enumerated dirs, then the current process PATH.
+fn combine_paths(rc_path: &str, augmented: &str) -> String {
+    let sep = path_sep();
+    let mut parts: Vec<String> = Vec::new();
+    for d in std::env::split_paths(rc_path) {
+        let s = d.to_string_lossy().into_owned();
+        if !s.is_empty() {
+            parts.push(s);
+        }
+    }
+    for d in std::env::split_paths(augmented) {
+        let s = d.to_string_lossy().into_owned();
+        if !s.is_empty() && !parts.contains(&s) {
+            parts.push(s);
+        }
+    }
+    let cur = std::env::var("PATH").unwrap_or_default();
+    for d in std::env::split_paths(&cur) {
+        let s = d.to_string_lossy().into_owned();
+        if !s.is_empty() && !parts.contains(&s) {
+            parts.push(s);
+        }
+    }
+    parts.join(sep)
+}
+
+/// The full `PATH` used to spawn `dsh`.
+///
+/// Order (each added only if the previous didn't find `dsh`):
+///   1. `DSH_BIN_DIR` enumerations + common npm/pnpm dirs (`augmented_path`)
+///   2. the user's shell rc-file PATH (`shell_rc_path`), zsh → fish → bash
+fn spawn_path() -> &'static str {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<String> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let augmented = augmented_path().to_string();
+        if executable_on_path("dsh", &augmented) {
+            augmented
+        } else if let Some(rc) = shell_rc_path() {
+            combine_paths(&rc, &augmented)
+        } else {
+            augmented
+        }
+    })
+}
+
 /// Start `dsh web` as a managed child and stream its stdout to detect the URL.
 ///
 /// Spawning happens on a background thread so we never block the UI. Output
@@ -128,6 +290,7 @@ pub(crate) fn spawn_dsh_web(app: AppHandle) {
         // host:port it binds (it may pick a different port if 3080 is taken).
         let mut child = match Command::new("dsh")
             .arg("web")
+            .env("PATH", spawn_path())
             .stdout(Stdio::piped())
             .spawn()
         {
@@ -388,6 +551,58 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![start_dsh, get_status, get_lang])
-        .run(tauri::generate_context!())
-        .expect("error while running dsh thin desktop");
+        .build(tauri::generate_context!())
+        .expect("error while building dsh thin desktop")
+        .run(|app, event| {
+            // macOS: clicking the dock icon emits a Reopen event. If the window
+            // is hidden in the tray (we intercept CloseRequested), bring it
+            // back — otherwise Tauri shows it and we'd race it with a
+            // hide()/show() that makes it flash.
+            if let tauri::RunEvent::Reopen { .. } = event {
+                tray::focus(app);
+            }
+        });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn augmented_path_covers_npm_pnpm_bins() {
+        let home = std::env::var_os("HOME").map(|h| h.to_string_lossy().into_owned());
+        if let Some(h) = home {
+            let path = augmented_path();
+            // Should contain the standard npm/pnpm global-bin candidates.
+            assert!(path.contains(&format!("{h}/.npm-global/bin")), "missing npm-global: {path}");
+            assert!(path.contains(&format!("{h}/Library/pnpm")), "missing pnpm home: {path}");
+        }
+        // Augmented PATH always starts with our directory list, not a bare env.
+        assert!(!augmented_path().is_empty());
+    }
+
+    #[test]
+    fn shell_rc_path_is_best_effort() {
+        // Not platform-dependent: on Unix it either returns a non-empty PATH
+        // (zsh/fish/bash found + rc sourced) or None (no shell / no rc).
+        #[cfg(windows)]
+        assert!(shell_rc_path().is_none());
+        #[cfg(not(windows))]
+        {
+            match shell_rc_path() {
+                Some(p) => assert!(!p.is_empty(), "rc path should not be empty"),
+                None => { /* acceptable: no rc present on this host */ }
+            }
+        }
+    }
+
+    #[test]
+    fn spawn_path_is_valid_and_nonempty() {
+        // The path we hand to Command::new("dsh") must be non-empty and free of
+        // empty entries. We don't assert dsh exists here — CI release runners
+        // don't install dsh.
+        let p = spawn_path();
+        assert!(!p.is_empty(), "spawn_path must not be empty: {p}");
+        assert!(std::env::split_paths(p).any(|d| !d.as_os_str().is_empty()));
+    }
 }
