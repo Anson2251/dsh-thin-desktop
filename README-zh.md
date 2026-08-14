@@ -24,6 +24,26 @@
 - 64 位桌面系统（macOS / Windows / Linux）。
 - **仅当你从源代码构建时需要**：Rust 工具链（见 [从源码构建](#从源码构建)）。
 
+## 安装 dsh
+
+如果还没有 `dsh`，从 npm 全局安装为命令行工具。**包管理器不重要，pnpm 和 npm 都行**：
+
+```bash
+pnpm install -g @deepseek-ai/dsh      # 或：
+npm install -g @deepseek-ai/dsh
+```
+
+`dsh` 要求 **Node.js `^22.19.0 || >=24.0.0`**。你只需要 node/npm 来安装 CLI——运行本桌面应用**不需要** node/npm。
+
+装完后确认命令在 `PATH` 上、且 web 档案能启动（这正是本应用所依赖的）：
+
+```bash
+dsh --version
+dsh web   # 启动服务并打印类似 "dsh web: http://127.0.0.1:3080"
+```
+
+> 只需安装这一次。应用会复用已经运行的 `dsh web`，没有则会自己启动一个。
+
 ---
 
 ## 安装 / 运行

@@ -28,6 +28,30 @@ simply:
 - A 64-bit desktop OS (macOS / Windows / Linux).
 - **Only to build from source:** Rust toolchain. (See [Build from source](#build-from-source).)
 
+## Install dsh
+
+If you don't have `dsh` yet, install it from npm as a global CLI. The package
+manager doesn't matter — **pnpm and npm both work**:
+
+```bash
+pnpm install -g @deepseek-ai/dsh      # or:
+npm install -g @deepseek-ai/dsh
+```
+
+`dsh` requires **Node.js `^22.19.0 || >=24.0.0`**. You only need `node`/`npm`
+to install the CLI — neither is required to *run* this desktop app.
+
+After installing, verify the command is on your `PATH` and that the web profile
+can boot (this is the exact thing the app expects):
+
+```bash
+dsh --version
+dsh web   # starts a server and prints e.g. "dsh web: http://127.0.0.1:3080"
+```
+
+> Only one install is needed. The app reuses a `dsh web` that's already running,
+> and starts one itself if not.
+
 ---
 
 ## Install / Run
