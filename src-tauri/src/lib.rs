@@ -109,14 +109,20 @@ fn path_sep() -> &'static str {
 ///
 /// When the app is launched from the macOS dock/Finder (or Windows Start menu),
 /// it inherits only the *system* PATH — the shell `.rc` files that add
-/// `~/.npm-global/bin` / pnpm's bin dir are not loaded. `dsh` is installed
-/// there, so `Command::new("dsh")` would fail. We prepend the candidate dirs
-/// so the spawned child can find `dsh` regardless of how the app was started.
+/// `~/.npm-global/bin` / pnpm's bin dir are not loaded, and on Windows the
+/// `%APPDATA%\npm` / `%LOCALAPPDATA%\pnpm` shim dirs are only in the *user*
+/// PATH. `dsh` is installed there, so spawning it by name would fail. We
+/// prepend the candidate dirs so the spawned child can find `dsh` regardless
+/// of how the app was started.
 fn augmented_path() -> &'static str {
     use std::sync::OnceLock;
     static CACHE: OnceLock<String> = OnceLock::new();
     CACHE.get_or_init(|| {
-        let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+        // GUI-launched apps on Windows have USERPROFILE (not HOME) set; on
+        // Unix it's HOME.
+        let home = std::env::var_os("HOME")
+            .or_else(|| std::env::var_os("USERPROFILE"))
+            .map(std::path::PathBuf::from);
         let mut dirs: Vec<std::path::PathBuf> = Vec::new();
 
         if let Some(b) = std::env::var_os("DSH_BIN_DIR") {
@@ -134,6 +140,21 @@ fn augmented_path() -> &'static str {
         if let Some(h) = &home {
             dirs.push(h.join("Library").join("pnpm"));
             dirs.push(h.join(".local").join("share").join("pnpm"));
+        }
+        // Windows npm/pnpm global-bin locations. `npm i -g` installs the
+        // `dsh` shims (`dsh.cmd`, `dsh.ps1`, `dsh`) into `%APPDATA%\npm`;
+        // standalone pnpm installs into `%LOCALAPPDATA%\pnpm`.
+        #[cfg(windows)]
+        {
+            if let Some(a) = std::env::var_os("APPDATA") {
+                dirs.push(std::path::PathBuf::from(a).join("npm"));
+            }
+            if let Some(l) = std::env::var_os("LOCALAPPDATA") {
+                dirs.push(std::path::PathBuf::from(l).join("pnpm"));
+            }
+            if let Some(pf) = std::env::var_os("ProgramFiles") {
+                dirs.push(std::path::PathBuf::from(pf).join("nodejs"));
+            }
         }
         dirs.push("/usr/local/bin".into());
         dirs.push("/opt/homebrew/bin".into());
@@ -211,6 +232,91 @@ fn executable_on_path(exe: &str, path: &str) -> bool {
         .any(|d| d.join(exe).is_file())
 }
 
+/// Candidate file names for `dsh` on Windows, in PATHEXT-like order.
+///
+/// npm installs `dsh` as three shims — `dsh` (POSIX shell script),
+/// `dsh.cmd` (cmd.exe batch) and `dsh.ps1` (PowerShell) — with no `dsh.exe`.
+/// We must pick a name `std::process::Command` can actually spawn (`.exe` /
+/// `.com` directly, `.bat`/`.cmd` via cmd.exe, `.ps1` via PowerShell).
+#[cfg(windows)]
+const DSH_CANDIDATES: [&str; 5] = ["dsh.com", "dsh.exe", "dsh.bat", "dsh.cmd", "dsh.ps1"];
+
+/// Whether a spawnable `dsh` exists on `path`.
+///
+/// On Windows the extensionless `dsh` file (a POSIX script) is *not* enough:
+/// `CreateProcess` would reject it, so we only count candidates that can
+/// actually be launched. On Unix `dsh` itself is executable and sufficient.
+fn dsh_available_on_path(path: &str) -> bool {
+    #[cfg(windows)]
+    {
+        DSH_CANDIDATES
+            .iter()
+            .any(|name| executable_on_path(name, path))
+    }
+    #[cfg(not(windows))]
+    {
+        executable_on_path("dsh", path)
+    }
+}
+
+/// The concrete `dsh` program to spawn, resolved once and cached.
+///
+/// On Unix this is just the bare name — the OS resolves it from `PATH` the
+/// usual way. On Windows, `std::process::Command` delegates to `CreateProcess`,
+/// which only appends `.exe` when the name has no extension, so
+/// `Command::new("dsh")` can never find the npm shims (`dsh.cmd`, `dsh.ps1`,
+/// or the extensionless POSIX script). We therefore walk the spawn `PATH`
+/// ourselves and return the full path of the first candidate we know how to
+/// run (`.com`/`.exe` directly, `.bat`/`.cmd` via cmd.exe, `.ps1` via
+/// PowerShell). Falls back to the bare name so the spawn error surfaces.
+fn dsh_program() -> &'static std::path::Path {
+    use std::sync::OnceLock;
+    static CACHE: OnceLock<std::path::PathBuf> = OnceLock::new();
+    CACHE.get_or_init(|| {
+        let path = spawn_path();
+        #[cfg(windows)]
+        {
+            for dir in std::env::split_paths(path).filter(|d| !d.as_os_str().is_empty()) {
+                for cand in DSH_CANDIDATES {
+                    let p = dir.join(cand);
+                    if p.is_file() {
+                        return p;
+                    }
+                }
+            }
+        }
+        std::path::PathBuf::from("dsh")
+    })
+    .as_path()
+}
+
+/// Build the `Command` that launches `dsh web`, resolving the npm shim on
+/// Windows where `CreateProcess` would otherwise only look for `dsh.exe`.
+fn dsh_command() -> Command {
+    let program = dsh_program();
+    let mut cmd = Command::new(program);
+    cmd.env("PATH", spawn_path()).stdout(Stdio::piped());
+    // A `.ps1` shim can't be spawned by `CreateProcess` at all; run it through
+    // Windows PowerShell (bundled on every Windows 10/11).
+    #[cfg(windows)]
+    if program
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("ps1"))
+    {
+        let mut ps = Command::new("powershell.exe");
+        ps.arg("-NoProfile")
+            .arg("-ExecutionPolicy")
+            .arg("Bypass")
+            .arg("-File")
+            .arg(program)
+            .arg("web");
+        ps.env("PATH", spawn_path()).stdout(Stdio::piped());
+        return ps;
+    }
+    cmd.arg("web");
+    cmd
+}
+
 /// Combine a user-rc PATH with the augmented fallbacks: rc dirs first, then
 /// our enumerated dirs, then the current process PATH.
 fn combine_paths(rc_path: &str, augmented: &str) -> String {
@@ -248,7 +354,7 @@ fn spawn_path() -> &'static str {
     static CACHE: OnceLock<String> = OnceLock::new();
     CACHE.get_or_init(|| {
         let augmented = augmented_path().to_string();
-        if executable_on_path("dsh", &augmented) {
+        if dsh_available_on_path(&augmented) {
             augmented
         } else if let Some(rc) = shell_rc_path() {
             combine_paths(&rc, &augmented)
@@ -288,12 +394,7 @@ pub(crate) fn spawn_dsh_web(app: AppHandle) {
 
         // Otherwise launch dsh web and capture stdout so we can parse the real
         // host:port it binds (it may pick a different port if 3080 is taken).
-        let mut child = match Command::new("dsh")
-            .arg("web")
-            .env("PATH", spawn_path())
-            .stdout(Stdio::piped())
-            .spawn()
-        {
+        let mut child = match dsh_command().spawn() {
             Ok(c) => {
                 let _ = app.emit(
                     "dsh_status",
@@ -603,11 +704,49 @@ mod tests {
 
     #[test]
     fn spawn_path_is_valid_and_nonempty() {
-        // The path we hand to Command::new("dsh") must be non-empty and free of
+        // The path we hand to the dsh Command must be non-empty and free of
         // empty entries. We don't assert dsh exists here — CI release runners
         // don't install dsh.
         let p = spawn_path();
         assert!(!p.is_empty(), "spawn_path must not be empty: {p}");
         assert!(std::env::split_paths(p).any(|d| !d.as_os_str().is_empty()));
+    }
+
+    #[test]
+    fn dsh_program_is_a_concrete_spawnable_path() {
+        // The resolved program must either be the bare name (Unix, where the OS
+        // resolves it) or a full path to an existing file (Windows, where we
+        // must point at the npm shim because CreateProcess only finds .exe).
+        let p = dsh_program();
+        let s = p.to_string_lossy();
+        #[cfg(windows)]
+        {
+            assert!(
+                p.is_absolute() && p.is_file(),
+                "on Windows dsh_program() must resolve to an existing file, got: {s}"
+            );
+            // Only candidates we can actually spawn are acceptable.
+            assert!(
+                DSH_CANDIDATES.iter().any(|c| s.ends_with(c)),
+                "unexpected dsh program: {s}"
+            );
+        }
+        #[cfg(not(windows))]
+        assert_eq!(s, "dsh", "on Unix dsh_program() should stay a bare name");
+    }
+
+    #[test]
+    fn dsh_available_on_path_matches_dsh_program() {
+        // If a candidate exists on the spawn PATH, dsh_program() must resolve
+        // to it (and vice versa: if none exists it falls back to the name).
+        let found = dsh_available_on_path(spawn_path());
+        #[cfg(windows)]
+        {
+            if found {
+                assert!(dsh_program().is_file());
+            }
+        }
+        // Sanity: the spawn PATH always contains at least one directory.
+        assert!(std::env::split_paths(spawn_path()).any(|d| !d.as_os_str().is_empty()));
     }
 }
