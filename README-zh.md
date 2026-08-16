@@ -6,9 +6,6 @@
 
 如果你平时在浏览器标签页里用 DeepSeek Harness 的网页界面，这个应用能给你更地道的桌面体验：独立窗口、菜单栏、系统托盘图标，以及 dsh 需要你注意时的原生通知。
 
-> [!NOTE]
-> **我们需要一个图标！** 当前应用用的是占位 Logo。如果你愿意为 DSH Thin Desktop 设计一款正式的应用/托盘图标，非常欢迎提交 Pull Request。
-
 ---
 
 ## 这是什么？
@@ -136,12 +133,14 @@ DSH_LANG=en_US.UTF-8 ./dsh-thin-desktop
 应用需要 `dsh` 命令来启动后端，它按 **以下顺序** 查找、在第一个成功的步骤停下：
 
 1. **`DSH_BIN_DIR`** —— 若你设置了此环境变量，优先使用这个显式覆盖。
-2. **常见 npm/pnpm 全局 bin 目录** —— `$HOME/.npm-global/bin`、`$HOME/.npm/bin`、`$HOME/.local/bin`、`$HOME/bin`、`$PNPM_HOME`、`~/Library/pnpm`（macOS）、`~/bin`，以及 `/usr/local/bin`、`/opt/homebrew/bin`。
+2. **常见 npm/pnpm 全局 bin 目录** —— `$HOME/.npm-global/bin`、`$HOME/.npm/bin`、`$HOME/.local/bin`、`$HOME/bin`、`$PNPM_HOME`、`~/Library/pnpm`（macOS）、`/usr/local/bin`、`/opt/homebrew/bin`；Windows 上还有 `%APPDATA%\npm`、`%LOCALAPPDATA%\pnpm`、`%ProgramFiles%\nodejs`。
 3. **你的 shell 的 rc 文件** —— 应用会调用你的 shell `source` 其配置文件并回显得到的 `$PATH`，从而找回 GUI 启动的应用通常看不到的目录。按以下顺序、且仅当文件存在时尝试：
    - `~/.zshrc`（zsh）
    - `~/.config/fish/config.fish`（fish）
    - `~/.bashrc`（bash）
 4. **都不行则报错** —— 启动失败，启动页会显示「重启后端」错误；请检查 `dsh` 是否已安装。
+
+在 Windows 上，`dsh` 通常以 npm shim（`dsh.cmd`、`dsh.ps1`）形式安装，并没有真正的 `dsh.exe`。应用会自行解析这些 shim：在上述 `PATH` 中依次查找 `dsh.exe`/`dsh.cmd`/`dsh.bat`/`dsh.ps1`，并用 cmd.exe 启动 `.cmd` shim（`.ps1` shim 则通过 PowerShell 启动）。
 
 > `DSH_BIN_DIR` 是应对任何非常规安装位置的兜底开关：
 >

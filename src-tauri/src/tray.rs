@@ -89,7 +89,9 @@ pub fn toggle_window(app: &tauri::AppHandle) {
     }
 }
 
-/// Bring the main window to the front (used when a notification fires).
+/// Bring the main window to the front (used when a notification fires, and
+/// when the macOS dock icon is clicked while the window is hidden in the tray).
+#[cfg(target_os = "macos")]
 pub fn focus(app: &tauri::AppHandle) {
     let Some(win) = app.get_webview_window("main") else { return };
     let _ = win.show();

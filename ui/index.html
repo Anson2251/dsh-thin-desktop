@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" href="icon.png" />
   <title>DeepSeek Harness</title>
   <style>
     :root {
@@ -35,14 +36,14 @@
       height: 72px;
       margin: 0 auto 18px;
       border-radius: 18px;
-      background: linear-gradient(135deg, #1f6feb, #6e40c9);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 800;
-      font-size: 26px;
-      color: #fff;
-      box-shadow: 0 8px 30px rgba(110, 64, 201, 0.35);
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(40, 101, 250, 0.35);
+    }
+    .logo-wrap img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
     }
     h1 { font-size: 18px; margin: 0 0 6px; font-weight: 600; }
     .sub { color: var(--dim); font-size: 13px; margin-bottom: 22px; }
@@ -103,7 +104,7 @@
 </head>
 <body>
   <div class="card">
-    <div class="logo-wrap">DSH</div>
+    <div class="logo-wrap"><img src="icon.png" alt="DSH" /></div>
     <h1>DeepSeek Harness</h1>
     <div class="sub">thin desktop client</div>
     <div class="status">

@@ -8,11 +8,6 @@ If you use the DeepSeek Harness web UI in a browser tab, this app gives you a
 proper desktop experience instead: its own window, a menu bar, a system-tray
 icon, and native notifications when dsh needs your attention.
 
-> [!NOTE]
-> **We need an icon!** The app currently ships with a placeholder logo.
-> If you'd like to design a proper app icon / tray icon for DSH Thin Desktop,
-> contributions (pull requests) are very welcome.
-
 ---
 
 ## What is this?
@@ -165,8 +160,8 @@ up `PATH` **in this order** — stopping at the first step that succeeds:
 1. **`DSH_BIN_DIR`** — if you set it, this explicit override is used first.
 2. **Common npm/pnpm global-bin dirs** — `$HOME/.npm-global/bin`,
    `$HOME/.npm/bin`, `$HOME/.local/bin`, `$HOME/bin`, `$PNPM_HOME`,
-   `~/Library/pnpm` (macOS), `~/bin`, and `/usr/local/bin`,
-   `/opt/homebrew/bin`.
+   `~/Library/pnpm` (macOS), `/usr/local/bin`, `/opt/homebrew/bin`, and on
+   Windows `%APPDATA%\npm`, `%LOCALAPPDATA%\pnpm`, `%ProgramFiles%\nodejs`.
 3. **Your shell's rc file** — the app asks your shell to `source` its config and
    echo the resulting `$PATH`, recovering dirs that a GUI-launched app normally
    never sees. Tried in this order and only if the file exists:
@@ -175,6 +170,11 @@ up `PATH` **in this order** — stopping at the first step that succeeds:
    - `~/.bashrc` (bash)
 4. If none of the above finds `dsh`, the launch fails and the boot page shows a
    "Start / Restart backend" error — double-check that `dsh` is installed.
+
+On Windows, `dsh` is usually installed by npm as shims (`dsh.cmd`, `dsh.ps1`)
+rather than a real `dsh.exe`. The app resolves those itself — it looks up the
+`PATH` above for `dsh.exe`/`dsh.cmd`/`dsh.bat`/`dsh.ps1` and launches the
+`.cmd` shim through cmd.exe (or the `.ps1` shim through PowerShell).
 
 > `DSH_BIN_DIR` is the escape hatch for any unusual install location:
 >
